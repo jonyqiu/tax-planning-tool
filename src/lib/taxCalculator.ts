@@ -307,6 +307,378 @@ export function batchCalculate(employees: EmployeeData[]): BatchResult[] {
   });
 }
 
+// 年末奖金优化场景：前11个月工资已知，优化12月工资+年终奖分配
+export interface YearEndScenario {
+  first11MonthsSalary: number; // 前11个月累计工资
+  decemberSalary: number; // 12月工资
+  yearEndBonus: number; // 年终奖
+  insurance: number; // 全年三险一金
+  deduction: number; // 全年专项附加扣除
+}
+
+export interface YearEndPlan {
+  type: 'separate' | 'combined' | 'partial';
+  name: string;
+  description: string;
+  // 分配方案
+  separateBonus: number; // 单独计税的年终奖金额
+  mergedBonus: number; // 并入工资的年终奖金额
+  combinedIncome: number; // 并入综合所得的总金额（全年工资+并入的奖金）
+  // 税额计算
+  separateBonusTax: number; // 单独计税部分税额
+  salaryTax: number; // 工资部分税额
+  totalTax: number; // 总税额
+  afterTaxIncome: number; // 税后收入
+  // 计算过程
+  salaryTaxableIncome: number; // 工资应纳税所得额
+  salaryRate: number; // 工资适用税率
+  bonusRate: number; // 年终奖适用税率
+}
+
+// 计算年末最优方案
+export function calculateYearEndOptimal(scenario: YearEndScenario) {
+  const { first11MonthsSalary, decemberSalary, yearEndBonus, insurance, deduction } = scenario;
+
+  // 全年工资收入
+  const annualSalary = first11MonthsSalary + decemberSalary;
+  const totalIncome = annualSalary + yearEndBonus;
+
+  // 方案1：年终奖单独计税（全部奖金单独计税）
+  const plan1 = calculateYearEndPlan1(annualSalary, yearEndBonus, insurance, deduction);
+
+  // 方案2：年终奖并入综合所得（全部奖金并入工资）
+  const plan2 = calculateYearEndPlan2(annualSalary, yearEndBonus, insurance, deduction);
+
+  // 方案3：部分奖金单独计税（寻找最优分配比例）
+  const plan3 = findOptimalPartialPlan(annualSalary, yearEndBonus, insurance, deduction);
+
+  // 找出最优方案
+  const plans = [plan1, plan2, plan3].filter((p): p is YearEndPlan => p !== null);
+  const optimalPlan = plans.reduce((best, current) =>
+    current.totalTax < best.totalTax ? current : best
+  );
+
+  // 计算节税金额（对比最差方案）
+  const worstPlan = plans.reduce((worst, current) =>
+    current.totalTax > worst.totalTax ? current : worst
+  );
+  const taxSaving = worstPlan.totalTax - optimalPlan.totalTax;
+
+  return {
+    scenario,
+    plans,
+    optimal: optimalPlan,
+    taxSaving,
+    comparison: {
+      separate: plan1,
+      combined: plan2,
+      partial: plan3,
+    },
+  };
+}
+
+// 方案1：年终奖全部单独计税
+function calculateYearEndPlan1(
+  annualSalary: number,
+  yearEndBonus: number,
+  insurance: number,
+  deduction: number
+): YearEndPlan {
+  // 工资部分应纳税
+  const salaryTaxableIncome = Math.max(0, annualSalary - 60000 - insurance - deduction);
+  const salaryTaxResult = calculateAnnualTax(salaryTaxableIncome);
+
+  // 年终奖单独计税
+  const bonusTaxResult = calculateBonusTax(yearEndBonus);
+
+  const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
+
+  return {
+    type: 'separate',
+    name: '年终奖单独计税',
+    description: '年终奖全部单独计税，工资部分正常并入综合所得',
+    separateBonus: yearEndBonus,
+    mergedBonus: 0,
+    combinedIncome: annualSalary,
+    separateBonusTax: bonusTaxResult.tax,
+    salaryTax: salaryTaxResult.tax,
+    totalTax,
+    afterTaxIncome: annualSalary + yearEndBonus - insurance - deduction - totalTax,
+    salaryTaxableIncome,
+    salaryRate: salaryTaxResult.rate,
+    bonusRate: bonusTaxResult.rate,
+  };
+}
+
+// 方案2：年终奖全部并入综合所得
+function calculateYearEndPlan2(
+  annualSalary: number,
+  yearEndBonus: number,
+  insurance: number,
+  deduction: number
+): YearEndPlan {
+  const totalIncome = annualSalary + yearEndBonus;
+  const taxableIncome = Math.max(0, totalIncome - 60000 - insurance - deduction);
+  const taxResult = calculateAnnualTax(taxableIncome);
+
+  return {
+    type: 'combined',
+    name: '年终奖并入综合所得',
+    description: '年终奖全部并入综合所得，与工资一起计税',
+    separateBonus: 0,
+    mergedBonus: yearEndBonus,
+    combinedIncome: totalIncome,
+    separateBonusTax: 0,
+    salaryTax: taxResult.tax,
+    totalTax: taxResult.tax,
+    afterTaxIncome: totalIncome - insurance - deduction - taxResult.tax,
+    salaryTaxableIncome: taxableIncome,
+    salaryRate: taxResult.rate,
+    bonusRate: 0,
+  };
+}
+
+// 方案3：寻找最优的部分奖金单独计税方案
+function findOptimalPartialPlan(
+  annualSalary: number,
+  yearEndBonus: number,
+  insurance: number,
+  deduction: number
+): YearEndPlan | null {
+  // 如果年终奖为0，不需要部分计税方案
+  if (yearEndBonus <= 0) return null;
+
+  let optimalPlan: YearEndPlan | null = null;
+  let minTax = Infinity;
+
+  // 遍历不同比例：0%到100%，步长1%
+  for (let percent = 0; percent <= 100; percent++) {
+    const separateBonus = (yearEndBonus * percent) / 100;
+    const remainingBonus = yearEndBonus - separateBonus;
+    const combinedSalary = annualSalary + remainingBonus;
+
+    // 计算税额
+    const salaryTaxableIncome = Math.max(0, combinedSalary - 60000 - insurance - deduction);
+    const salaryTaxResult = calculateAnnualTax(salaryTaxableIncome);
+    const bonusTaxResult = calculateBonusTax(separateBonus);
+    const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
+
+    if (totalTax < minTax) {
+      minTax = totalTax;
+
+      // 生成描述
+      let description: string;
+      if (percent === 0) {
+        description = '年终奖全部并入综合所得，与工资一起计税';
+      } else if (percent === 100) {
+        description = '年终奖全部单独计税，工资部分正常并入综合所得';
+      } else {
+        description = `年终奖中 ${separateBonus.toFixed(0)}元 单独计税，${remainingBonus.toFixed(0)}元 并入综合所得`;
+      }
+
+      optimalPlan = {
+        type: percent === 0 || percent === 100 ? (percent === 0 ? 'combined' : 'separate') : 'partial',
+        name: percent === 0 || percent === 100 ? (percent === 0 ? '年终奖并入综合所得' : '年终奖单独计税') : '部分奖金单独计税',
+        description,
+        separateBonus,
+        mergedBonus: remainingBonus,
+        combinedIncome: combinedSalary,
+        separateBonusTax: bonusTaxResult.tax,
+        salaryTax: salaryTaxResult.tax,
+        totalTax,
+        afterTaxIncome: annualSalary + yearEndBonus - insurance - deduction - totalTax,
+        salaryTaxableIncome,
+        salaryRate: salaryTaxResult.rate,
+        bonusRate: bonusTaxResult.rate,
+      };
+    }
+  }
+
+  return optimalPlan;
+}
+
+// 场景1：最优拆分方案 - 输入税前总收入，自动拆分工资和年终奖
+export interface OptimalSplitResult {
+  totalIncome: number;
+  optimalSalary: number;
+  optimalBonus: number;
+  insurance: number;
+  deduction: number;
+  totalTax: number;
+  afterTaxIncome: number;
+  plan: 'separate' | 'combined';
+  planName: string;
+  blindZoneAvoided: boolean;
+  calculationSteps: CalculationStep[];
+}
+
+// 计算最优拆分方案（避开盲区）
+export function calculateOptimalSplit(
+  totalIncome: number,
+  insurance: number,
+  deduction: number
+): OptimalSplitResult {
+  // 寻找最优的工资和年终奖分配
+  let optimalResult: OptimalSplitResult | null = null;
+  let minTax = Infinity;
+
+  // 尝试不同的奖金比例（从0到总收入的100%，步长1000元）
+  const step = 1000;
+  for (let bonus = 0; bonus <= totalIncome; bonus += step) {
+    const salary = totalIncome - bonus;
+
+    // 检查是否处于盲区
+    const blindCheck = checkBlindZone(bonus);
+    let adjustedBonus = bonus;
+
+    // 如果处于盲区，调整到盲区下限
+    if (blindCheck.isInBlindZone && blindCheck.zone) {
+      adjustedBonus = blindCheck.zone.min;
+    }
+
+    const adjustedSalary = totalIncome - adjustedBonus;
+
+    // 计算两种方案
+    const separateResult = calculateSeparateTax(adjustedSalary, adjustedBonus, insurance, deduction);
+    const combinedResult = calculateCombinedTax(adjustedSalary, adjustedBonus, insurance, deduction);
+
+    // 选择税额较低的方案
+    const isSeparateBetter = separateResult.totalTax <= combinedResult.totalTax;
+    const currentTax = isSeparateBetter ? separateResult.totalTax : combinedResult.totalTax;
+
+    if (currentTax < minTax) {
+      minTax = currentTax;
+
+      // 生成计算步骤
+      const steps: CalculationStep[] = [
+        { description: '税前年度总收入', formula: '输入总额', value: totalIncome },
+        { description: '建议工资部分', formula: '优化分配', value: adjustedSalary },
+        { description: '建议年终奖部分', formula: '优化分配', value: adjustedBonus },
+        { description: '专项扣除（三险一金）', formula: '', value: insurance },
+        { description: '专项附加扣除', formula: '', value: deduction },
+        { description: '基本减除费用', formula: '60,000元/年', value: 60000 },
+      ];
+
+      if (isSeparateBetter) {
+        steps.push(
+          { description: '工资应纳税所得额', formula: `${adjustedSalary} - 60,000 - ${insurance} - ${deduction}`, value: separateResult.salaryTaxableIncome },
+          { description: '工资适用税率', formula: `${(separateResult.salaryRate * 100).toFixed(0)}%`, value: separateResult.salaryRate },
+          { description: '工资应纳税额', formula: '', value: separateResult.salaryTax },
+          { description: '年终奖应纳税额', formula: '', value: separateResult.bonusTax },
+          { description: '总应纳税额', formula: '', value: separateResult.totalTax }
+        );
+      } else {
+        steps.push(
+          { description: '综合所得应纳税所得额', formula: `${adjustedSalary} + ${adjustedBonus} - 60,000 - ${insurance} - ${deduction}`, value: combinedResult.taxableIncome },
+          { description: '综合所得适用税率', formula: `${(combinedResult.rate * 100).toFixed(0)}%`, value: combinedResult.rate },
+          { description: '总应纳税额', formula: '', value: combinedResult.totalTax }
+        );
+      }
+
+      optimalResult = {
+        totalIncome,
+        optimalSalary: adjustedSalary,
+        optimalBonus: adjustedBonus,
+        insurance,
+        deduction,
+        totalTax: currentTax,
+        afterTaxIncome: totalIncome - insurance - deduction - currentTax,
+        plan: isSeparateBetter ? 'separate' : 'combined',
+        planName: isSeparateBetter ? '年终奖单独计税' : '年终奖并入综合所得',
+        blindZoneAvoided: blindCheck.isInBlindZone,
+        calculationSteps: steps,
+      };
+    }
+  }
+
+  return optimalResult || {
+    totalIncome,
+    optimalSalary: totalIncome,
+    optimalBonus: 0,
+    insurance,
+    deduction,
+    totalTax: 0,
+    afterTaxIncome: totalIncome - insurance - deduction,
+    plan: 'combined',
+    planName: '年终奖并入综合所得',
+    blindZoneAvoided: false,
+    calculationSteps: [],
+  };
+}
+
+// 场景1批量计算：智能拆分
+export interface SplitEmployeeData {
+  name: string;
+  totalIncome: number;
+  insurance: number;
+  deduction: number;
+}
+
+export interface SplitBatchResult extends SplitEmployeeData {
+  optimalSalary: number;
+  optimalBonus: number;
+  totalTax: number;
+  afterTaxIncome: number;
+  planName: string;
+  blindZoneAvoided: boolean;
+}
+
+export function batchCalculateSplit(employees: SplitEmployeeData[]): SplitBatchResult[] {
+  return employees.map((emp) => {
+    const result = calculateOptimalSplit(emp.totalIncome, emp.insurance, emp.deduction);
+    return {
+      ...emp,
+      optimalSalary: result.optimalSalary,
+      optimalBonus: result.optimalBonus,
+      totalTax: result.totalTax,
+      afterTaxIncome: result.afterTaxIncome,
+      planName: result.planName,
+      blindZoneAvoided: result.blindZoneAvoided,
+    };
+  });
+}
+
+// 场景2批量计算：年末优化
+export interface YearEndEmployeeData {
+  name: string;
+  first11MonthsSalary: number;
+  decemberSalary: number;
+  yearEndBonus: number;
+  insurance: number;
+  deduction: number;
+}
+
+export interface YearEndBatchResult extends YearEndEmployeeData {
+  optimalType: string;
+  separateBonus: number;
+  mergedBonus: number;
+  totalTax: number;
+  afterTaxIncome: number;
+  taxSaving: number;
+}
+
+export function batchCalculateYearEnd(employees: YearEndEmployeeData[]): YearEndBatchResult[] {
+  return employees.map((emp) => {
+    const scenario: YearEndScenario = {
+      first11MonthsSalary: emp.first11MonthsSalary,
+      decemberSalary: emp.decemberSalary,
+      yearEndBonus: emp.yearEndBonus,
+      insurance: emp.insurance,
+      deduction: emp.deduction,
+    };
+    const result = calculateYearEndOptimal(scenario);
+    return {
+      ...emp,
+      optimalType: result.optimal.name,
+      separateBonus: result.optimal.separateBonus,
+      mergedBonus: result.optimal.mergedBonus,
+      totalTax: result.optimal.totalTax,
+      afterTaxIncome: result.optimal.afterTaxIncome,
+      taxSaving: result.taxSaving,
+    };
+  });
+}
+
 // 格式化金额
 export function formatMoney(amount: number): string {
   return amount.toLocaleString('zh-CN', {
