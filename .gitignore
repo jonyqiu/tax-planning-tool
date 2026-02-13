@@ -62,4 +62,5 @@ Thumbs.db
 
 # Temporary folders
 tmp/
-temp/
+temp/.claude/
+PROJECT_CONTEXT.md

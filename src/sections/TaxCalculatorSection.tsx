@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// Card components removed as they are not used in this file
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Calculator,
   TrendingDown,
@@ -14,15 +21,16 @@ import {
   Calendar,
   FileText,
   ChevronRight,
-  Info
+  Info,
+  Eye
 } from 'lucide-react';
 import {
   calculateOptimalSplit,
   calculateYearEndOptimal,
   calculateOptimalPlan,
   formatMoney,
-  checkBlindZone,
   type YearEndScenario,
+  type YearEndPlan,
 } from '@/lib/taxCalculator';
 
 type ScenarioType = 'split' | 'yearend' | 'compare';
@@ -406,6 +414,102 @@ export function TaxCalculatorSection() {
     </div>
   );
 
+  // 计算过程弹窗组件
+  const CalculationDetailDialog = ({ plan }: { plan: YearEndPlan }) => {
+    if (!plan.calculationSteps) return null;
+
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <button className="text-blue-400 text-sm flex items-center gap-1 hover:text-blue-300 transition-colors mt-2">
+            <Eye className="w-4 h-4" />
+            查看计算详情
+          </button>
+        </DialogTrigger>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-white text-gray-800">
+          <DialogHeader>
+            <DialogTitle className="text-xl">{plan.name} - 详细计算过程</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* 工资部分计算 */}
+            {plan.calculationSteps.salarySteps.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-600 mb-3">工资部分计算</h4>
+                <div className="space-y-2 text-sm">
+                  {plan.calculationSteps.salarySteps.map((step, idx) => (
+                    <div key={idx} className="flex justify-between py-1 border-b border-gray-200 last:border-0">
+                      <div className="flex-1">
+                        <span className="text-gray-600">{step.description}</span>
+                        {step.formula && (
+                          <span className="text-gray-400 text-xs ml-2">({step.formula})</span>
+                        )}
+                      </div>
+                      <span className="font-mono font-medium ml-4">
+                        {step.description.includes('税率')
+                          ? `${(step.value * 100).toFixed(0)}%`
+                          : `¥${formatMoney(step.value)}`
+                        }
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 年终奖部分计算 */}
+            {plan.calculationSteps.bonusSteps.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-600 mb-3">年终奖部分计算</h4>
+                <div className="space-y-2 text-sm">
+                  {plan.calculationSteps.bonusSteps.map((step, idx) => (
+                    <div key={idx} className="flex justify-between py-1 border-b border-gray-200 last:border-0">
+                      <div className="flex-1">
+                        <span className="text-gray-600">{step.description}</span>
+                        {step.formula && (
+                          <span className="text-gray-400 text-xs ml-2">({step.formula})</span>
+                        )}
+                      </div>
+                      <span className="font-mono font-medium ml-4">
+                        {step.description.includes('税率')
+                          ? `${(step.value * 100).toFixed(0)}%`
+                          : `¥${formatMoney(step.value)}`
+                        }
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 汇总 */}
+            <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-200">
+              <h4 className="font-semibold text-blue-700 mb-3">计算汇总</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between py-2 border-b border-blue-100">
+                  <span className="text-gray-700">工资应纳税额</span>
+                  <span className="font-mono font-semibold text-red-600">¥{formatMoney(plan.salaryTax)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-blue-100">
+                  <span className="text-gray-700">年终奖应纳税额</span>
+                  <span className="font-mono font-semibold text-red-600">¥{formatMoney(plan.separateBonusTax)}</span>
+                </div>
+                <div className="flex justify-between py-3 bg-white rounded px-3 mt-2">
+                  <span className="font-semibold text-gray-800">总应纳税额</span>
+                  <span className="font-mono font-bold text-red-600 text-lg">¥{formatMoney(plan.totalTax)}</span>
+                </div>
+                <div className="flex justify-between py-2 px-3">
+                  <span className="text-gray-700">税后收入</span>
+                  <span className="font-mono font-semibold text-emerald-600">¥{formatMoney(plan.afterTaxIncome)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   const renderYearEndResult = () => {
     if (!yearEndResult) return null;
 
@@ -441,6 +545,22 @@ export function TaxCalculatorSection() {
               </Badge>
             </div>
             <p className="text-white/80 text-sm">{yearEndResult.optimal.description}</p>
+
+            {/* 显示应纳税额 */}
+            <div className="mt-3 pt-3 border-t border-blue-500/30">
+              <div className="flex justify-between items-center">
+                <span className="text-white/80">应纳税额</span>
+                <span className="text-[#e94560] text-xl font-bold">¥{formatMoney(yearEndResult.optimal.totalTax)}</span>
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-white/80">税后收入</span>
+                <span className="text-emerald-400 font-semibold">¥{formatMoney(yearEndResult.optimal.afterTaxIncome)}</span>
+              </div>
+            </div>
+
+            {/* 查看计算详情按钮 */}
+            <CalculationDetailDialog plan={yearEndResult.optimal} />
+
             {yearEndResult.taxSaving > 0 && (
               <div className="mt-3 pt-3 border-t border-blue-500/30">
                 <p className="text-emerald-400 font-semibold">
@@ -496,6 +616,9 @@ export function TaxCalculatorSection() {
                   </div>
                 </div>
               </div>
+
+              {/* 每个方案都显示查看详情 */}
+              <CalculationDetailDialog plan={plan} />
             </div>
           ))}
         </div>

@@ -1,18 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir:*)",
-      "Bash(npx tsc:*)",
-      "Bash(npm run build:*)",
-      "Bash(npm install:*)",
-      "Bash(npm run dev:*)",
-      "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git config:*)",
-      "Bash(gh:*)",
-      "Bash(git remote add:*)",
-      "Bash(git push:*)"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n清理项目：删除无用文件并优化算法\n\n- 删除 .claude 临时配置文件夹\n- 更新 .gitignore 排除临时文件和项目文档\n- 优化税额比较逻辑：税额相同时优先选择简单方案\n- 添加浮点数容差比较（EPSILON = 0.01）\n- 添加计算过程详情弹窗功能\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

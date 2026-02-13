@@ -333,6 +333,12 @@ export interface YearEndPlan {
   salaryTaxableIncome: number; // 工资应纳税所得额
   salaryRate: number; // 工资适用税率
   bonusRate: number; // 年终奖适用税率
+  // 详细计算步骤（用于展示）
+  calculationSteps?: {
+    salarySteps: CalculationStep[];
+    bonusSteps: CalculationStep[];
+    totalSteps: CalculationStep[];
+  };
 }
 
 // 计算年末最优方案
@@ -341,7 +347,8 @@ export function calculateYearEndOptimal(scenario: YearEndScenario) {
 
   // 全年工资收入
   const annualSalary = first11MonthsSalary + decemberSalary;
-  const totalIncome = annualSalary + yearEndBonus;
+  // totalIncome is calculated but not used directly in this function
+  // const totalIncome = annualSalary + yearEndBonus;
 
   // 方案1：年终奖单独计税（全部奖金单独计税）
   const plan1 = calculateYearEndPlan1(annualSalary, yearEndBonus, insurance, deduction);
@@ -353,10 +360,24 @@ export function calculateYearEndOptimal(scenario: YearEndScenario) {
   const plan3 = findOptimalPartialPlan(annualSalary, yearEndBonus, insurance, deduction);
 
   // 找出最优方案
+  // 优先选择税额低的，税额相同时选择更简单的方案（优先单独计税 > 并入综合所得 > 部分拆分）
+  const getComplexityScore = (plan: YearEndPlan): number => {
+    if (plan.type === 'separate') return 0; // 全部单独计税，最简单
+    if (plan.type === 'combined') return 1; // 全部并入综合所得
+    return 2; // 部分拆分，最复杂
+  };
+
+  // 使用容差比较浮点数，避免精度问题
+  const EPSILON = 0.01;
+
   const plans = [plan1, plan2, plan3].filter((p): p is YearEndPlan => p !== null);
-  const optimalPlan = plans.reduce((best, current) =>
-    current.totalTax < best.totalTax ? current : best
-  );
+  const optimalPlan = plans.reduce((best, current) => {
+    // 当前方案税额明显更低，选择当前方案
+    if (current.totalTax < best.totalTax - EPSILON) return current;
+    // 税额在容差范围内相同，选择更简单的方案
+    if (Math.abs(current.totalTax - best.totalTax) <= EPSILON && getComplexityScore(current) < getComplexityScore(best)) return current;
+    return best;
+  });
 
   // 计算节税金额（对比最差方案）
   const worstPlan = plans.reduce((worst, current) =>
@@ -393,6 +414,33 @@ function calculateYearEndPlan1(
 
   const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
 
+  // 生成计算步骤
+  const salarySteps: CalculationStep[] = [
+    { description: '年度工资收入', formula: '', value: annualSalary },
+    { description: '基本减除费用', formula: '60,000元/年', value: 60000 },
+    { description: '专项扣除（三险一金）', formula: '', value: insurance },
+    { description: '专项附加扣除', formula: '', value: deduction },
+    { description: '工资应纳税所得额', formula: `${annualSalary} - 60,000 - ${insurance} - ${deduction}`, value: salaryTaxableIncome },
+    { description: '工资适用税率', formula: `${(salaryTaxResult.rate * 100).toFixed(0)}%`, value: salaryTaxResult.rate },
+    { description: '工资速算扣除数', formula: '', value: salaryTaxResult.deduction },
+    { description: '工资应纳税额', formula: `${salaryTaxableIncome} × ${(salaryTaxResult.rate * 100).toFixed(0)}% - ${salaryTaxResult.deduction}`, value: salaryTaxResult.tax },
+  ];
+
+  const bonusSteps: CalculationStep[] = [
+    { description: '年终奖金额', formula: '', value: yearEndBonus },
+    { description: '月均奖金', formula: `${yearEndBonus} ÷ 12`, value: bonusTaxResult.monthlyAmount },
+    { description: '年终奖适用税率', formula: `${(bonusTaxResult.rate * 100).toFixed(0)}%`, value: bonusTaxResult.rate },
+    { description: '年终奖速算扣除数', formula: '', value: bonusTaxResult.deduction },
+    { description: '年终奖应纳税额', formula: `${yearEndBonus} × ${(bonusTaxResult.rate * 100).toFixed(0)}% - ${bonusTaxResult.deduction}`, value: bonusTaxResult.tax },
+  ];
+
+  const totalSteps: CalculationStep[] = [
+    { description: '工资应纳税额', formula: '', value: salaryTaxResult.tax },
+    { description: '年终奖应纳税额', formula: '', value: bonusTaxResult.tax },
+    { description: '总应纳税额', formula: `${salaryTaxResult.tax} + ${bonusTaxResult.tax}`, value: totalTax },
+    { description: '税后收入', formula: `${annualSalary} + ${yearEndBonus} - ${insurance} - ${deduction} - ${totalTax}`, value: annualSalary + yearEndBonus - insurance - deduction - totalTax },
+  ];
+
   return {
     type: 'separate',
     name: '年终奖单独计税',
@@ -407,6 +455,11 @@ function calculateYearEndPlan1(
     salaryTaxableIncome,
     salaryRate: salaryTaxResult.rate,
     bonusRate: bonusTaxResult.rate,
+    calculationSteps: {
+      salarySteps,
+      bonusSteps,
+      totalSteps,
+    },
   };
 }
 
@@ -420,6 +473,21 @@ function calculateYearEndPlan2(
   const totalIncome = annualSalary + yearEndBonus;
   const taxableIncome = Math.max(0, totalIncome - 60000 - insurance - deduction);
   const taxResult = calculateAnnualTax(taxableIncome);
+
+  // 生成计算步骤
+  const salarySteps: CalculationStep[] = [
+    { description: '年度工资收入', formula: '', value: annualSalary },
+    { description: '年终奖金额', formula: '', value: yearEndBonus },
+    { description: '综合所得收入', formula: `${annualSalary} + ${yearEndBonus}`, value: totalIncome },
+    { description: '基本减除费用', formula: '60,000元/年', value: 60000 },
+    { description: '专项扣除（三险一金）', formula: '', value: insurance },
+    { description: '专项附加扣除', formula: '', value: deduction },
+    { description: '应纳税所得额', formula: `${totalIncome} - 60,000 - ${insurance} - ${deduction}`, value: taxableIncome },
+    { description: '适用税率', formula: `${(taxResult.rate * 100).toFixed(0)}%`, value: taxResult.rate },
+    { description: '速算扣除数', formula: '', value: taxResult.deduction },
+    { description: '总应纳税额', formula: `${taxableIncome} × ${(taxResult.rate * 100).toFixed(0)}% - ${taxResult.deduction}`, value: taxResult.tax },
+    { description: '税后收入', formula: `${totalIncome} - ${insurance} - ${deduction} - ${taxResult.tax}`, value: totalIncome - insurance - deduction - taxResult.tax },
+  ];
 
   return {
     type: 'combined',
@@ -435,6 +503,11 @@ function calculateYearEndPlan2(
     salaryTaxableIncome: taxableIncome,
     salaryRate: taxResult.rate,
     bonusRate: 0,
+    calculationSteps: {
+      salarySteps,
+      bonusSteps: [],
+      totalSteps: salarySteps.filter(s => s.description.includes('应纳税额') || s.description.includes('税后收入')),
+    },
   };
 }
 
@@ -463,7 +536,22 @@ function findOptimalPartialPlan(
     const bonusTaxResult = calculateBonusTax(separateBonus);
     const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
 
-    if (totalTax < minTax) {
+    // 计算当前方案的复杂度分数（越低越简单）
+    // 0% = 全部并入（复杂度1），100% = 全部单独（复杂度0），其他 = 部分拆分（复杂度2）
+    const getComplexityScore = (p: number): number => {
+      if (p === 100) return 0; // 全部单独计税，最简单
+      if (p === 0) return 1;   // 全部并入综合所得
+      return 2;                // 部分拆分，最复杂
+    };
+
+    const currentComplexity = getComplexityScore(percent);
+    const optimalComplexity = optimalPlan ? getComplexityScore(optimalPlan.separateBonus > 0 && optimalPlan.mergedBonus > 0 ? 50 : (optimalPlan.separateBonus > 0 ? 100 : 0)) : Infinity;
+
+    // 使用容差比较浮点数，避免精度问题
+    const EPSILON = 0.01;
+
+    // 优先选择税额低的，税额相同时选择更简单的方案
+    if (totalTax < minTax - EPSILON || (Math.abs(totalTax - minTax) <= EPSILON && currentComplexity < optimalComplexity)) {
       minTax = totalTax;
 
       // 生成描述
@@ -475,6 +563,35 @@ function findOptimalPartialPlan(
       } else {
         description = `年终奖中 ${separateBonus.toFixed(0)}元 单独计税，${remainingBonus.toFixed(0)}元 并入综合所得`;
       }
+
+      // 生成计算步骤
+      const salarySteps: CalculationStep[] = [
+        { description: '年度工资收入', formula: '', value: annualSalary },
+        { description: '并入工资的年终奖', formula: '', value: remainingBonus },
+        { description: '综合所得收入', formula: `${annualSalary} + ${remainingBonus}`, value: combinedSalary },
+        { description: '基本减除费用', formula: '60,000元/年', value: 60000 },
+        { description: '专项扣除（三险一金）', formula: '', value: insurance },
+        { description: '专项附加扣除', formula: '', value: deduction },
+        { description: '工资应纳税所得额', formula: `${combinedSalary} - 60,000 - ${insurance} - ${deduction}`, value: salaryTaxableIncome },
+        { description: '工资适用税率', formula: `${(salaryTaxResult.rate * 100).toFixed(0)}%`, value: salaryTaxResult.rate },
+        { description: '工资速算扣除数', formula: '', value: salaryTaxResult.deduction },
+        { description: '工资应纳税额', formula: `${salaryTaxableIncome} × ${(salaryTaxResult.rate * 100).toFixed(0)}% - ${salaryTaxResult.deduction}`, value: salaryTaxResult.tax },
+      ];
+
+      const bonusSteps: CalculationStep[] = [
+        { description: '单独计税年终奖', formula: '', value: separateBonus },
+        { description: '月均奖金', formula: `${separateBonus} ÷ 12`, value: bonusTaxResult.monthlyAmount },
+        { description: '年终奖适用税率', formula: `${(bonusTaxResult.rate * 100).toFixed(0)}%`, value: bonusTaxResult.rate },
+        { description: '年终奖速算扣除数', formula: '', value: bonusTaxResult.deduction },
+        { description: '年终奖应纳税额', formula: `${separateBonus} × ${(bonusTaxResult.rate * 100).toFixed(0)}% - ${bonusTaxResult.deduction}`, value: bonusTaxResult.tax },
+      ];
+
+      const totalSteps: CalculationStep[] = [
+        { description: '工资应纳税额', formula: '', value: salaryTaxResult.tax },
+        { description: '年终奖应纳税额', formula: '', value: bonusTaxResult.tax },
+        { description: '总应纳税额', formula: `${salaryTaxResult.tax} + ${bonusTaxResult.tax}`, value: totalTax },
+        { description: '税后收入', formula: `${annualSalary} + ${yearEndBonus} - ${insurance} - ${deduction} - ${totalTax}`, value: annualSalary + yearEndBonus - insurance - deduction - totalTax },
+      ];
 
       optimalPlan = {
         type: percent === 0 || percent === 100 ? (percent === 0 ? 'combined' : 'separate') : 'partial',
@@ -490,6 +607,11 @@ function findOptimalPartialPlan(
         salaryTaxableIncome,
         salaryRate: salaryTaxResult.rate,
         bonusRate: bonusTaxResult.rate,
+        calculationSteps: {
+          salarySteps,
+          bonusSteps,
+          totalSteps,
+        },
       };
     }
   }
@@ -525,7 +647,8 @@ export function calculateOptimalSplit(
   // 尝试不同的奖金比例（从0到总收入的100%，步长1000元）
   const step = 1000;
   for (let bonus = 0; bonus <= totalIncome; bonus += step) {
-    const salary = totalIncome - bonus;
+    // salary is calculated but used indirectly through bonus allocation
+    // const salary = totalIncome - bonus;
 
     // 检查是否处于盲区
     const blindCheck = checkBlindZone(bonus);
