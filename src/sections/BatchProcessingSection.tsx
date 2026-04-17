@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Upload, Download, FileSpreadsheet, AlertTriangle, CheckCircle2, X, Split, Calendar, FileText } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, AlertTriangle, X, Split, Calendar, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   batchCalculate,
@@ -31,12 +31,12 @@ export function BatchProcessingSection() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentScenario = batchScenarios.find(s => s.type === selectedScenario)!;
-  const colorMap: Record<string, string> = {
+  const colorMap = {
     emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', btn: 'bg-emerald-500 hover:bg-emerald-600' },
     blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400', btn: 'bg-blue-500 hover:bg-blue-600' },
     amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', btn: 'bg-amber-500 hover:bg-amber-600' },
   };
-  const colors = colorMap[currentScenario.color];
+  const colors = colorMap[currentScenario.color as keyof typeof colorMap];
 
   const downloadTemplate = () => {
     let template: any[] = [];
@@ -166,7 +166,7 @@ export function BatchProcessingSection() {
             {batchScenarios.map((scenario) => {
               const Icon = scenario.icon;
               const isActive = selectedScenario === scenario.type;
-              const c = colorMap[scenario.color];
+              const c = colorMap[scenario.color as keyof typeof colorMap];
               return (
                 <button
                   key={scenario.type}
@@ -248,7 +248,7 @@ export function BatchProcessingSection() {
                           <td className="p-4 text-right text-amber-400">¥{formatMoney(r.totalTax)}</td>
                           <td className="p-4 text-right text-white">¥{formatMoney(r.afterTaxIncome)}</td>
                           <td className="p-4 text-center">
-                            <span className={`px-3 py-1 rounded-full text-xs ${colors.badge || colors.bg}`}>
+                            <span className={`px-3 py-1 rounded-full text-xs ${colors.bg}`}>
                               {r.optimalType || r.planName}
                             </span>
                           </td>

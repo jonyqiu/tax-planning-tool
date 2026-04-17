@@ -517,6 +517,7 @@ function findOptimalPartialPlan(
 
   let optimalPlan: YearEndPlan | null = null;
   let minTax = Infinity;
+  const EPSILON = 0.01;
 
   // 遍历不同比例：0%到100%，步长1%
   for (let percent = 0; percent <= 100; percent++) {

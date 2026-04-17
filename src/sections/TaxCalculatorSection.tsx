@@ -1,13 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
   Calculator,
   TrendingDown,
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
-  Info,
-  Eye,
-  DollarSign,
+  Calendar as CalendarIcon,
   Gift,
   Wallet,
 } from 'lucide-react';
@@ -17,10 +14,41 @@ import {
   calculateOptimalPlan,
   formatMoney,
   type YearEndScenario,
-  type YearEndPlan,
 } from '@/lib/taxCalculator';
 
+type ColorClasses = {
+  bg: string;
+  border: string;
+  text: string;
+  hover: string;
+  badge: string;
+};
+
 type CalculatorMode = 'split' | 'yearend' | 'compare';
+
+const colorClasses: Record<string, ColorClasses> = {
+  emerald: {
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+    text: 'text-emerald-400',
+    hover: 'hover:border-emerald-500/50',
+    badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
+  },
+  blue: {
+    bg: 'bg-blue-500/10',
+    border: 'border-blue-500/30',
+    text: 'text-blue-400',
+    hover: 'hover:border-blue-500/50',
+    badge: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+  },
+  amber: {
+    bg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+    text: 'text-amber-400',
+    hover: 'hover:border-amber-500/50',
+    badge: 'bg-amber-500/20 text-amber-400 border-amber-500/50',
+  },
+};
 
 export function TaxCalculatorSection() {
   const [mode, setMode] = useState<CalculatorMode>('split');
@@ -85,33 +113,9 @@ export function TaxCalculatorSection() {
 
   const tabs = [
     { id: 'split' as CalculatorMode, label: '智能拆分', icon: Wallet, color: 'emerald' },
-    { id: 'yearend' as CalculatorMode, label: '年末优化', icon: Calendar, color: 'blue' },
+    { id: 'yearend' as CalculatorMode, label: '年末优化', icon: CalendarIcon, color: 'blue' },
     { id: 'compare' as CalculatorMode, label: '方案对比', icon: TrendingDown, color: 'amber' },
   ];
-
-  const colorClasses = {
-    emerald: {
-      bg: 'bg-emerald-500/10',
-      border: 'border-emerald-500/30',
-      text: 'text-emerald-400',
-      hover: 'hover:border-emerald-500/50',
-      badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
-    },
-    blue: {
-      bg: 'bg-blue-500/10',
-      border: 'border-blue-500/30',
-      text: 'text-blue-400',
-      hover: 'hover:border-blue-500/50',
-      badge: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-    },
-    amber: {
-      bg: 'bg-amber-500/10',
-      border: 'border-amber-500/30',
-      text: 'text-amber-400',
-      hover: 'hover:border-amber-500/50',
-      badge: 'bg-amber-500/20 text-amber-400 border-amber-500/50',
-    },
-  };
 
   return (
     <section className="min-h-screen py-12 px-4">
@@ -127,7 +131,7 @@ export function TaxCalculatorSection() {
           <div className="inline-flex bg-white/5 rounded-xl p-1.5 border border-white/10">
             {tabs.map((tab) => {
               const Icon = tab.icon;
-              const colors = colorClasses[tab.color];
+              const colors = colorClasses[tab.color as keyof typeof colorClasses];
               return (
                 <button
                   key={tab.id}
@@ -215,7 +219,7 @@ export function TaxCalculatorSection() {
 }
 
 // Calendar icon for year-end mode
-function Calendar(props: { className?: string }) {
+function CalendarIconSvg(props: { className?: string }) {
   return (
     <svg className={props.className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -309,7 +313,7 @@ function YearEndForm({ form, setForm, onCalculate, color }: {
     <div className="space-y-6">
       <div className="flex items-center gap-3 mb-6">
         <div className={`w-10 h-10 ${color.bg} rounded-xl flex items-center justify-center`}>
-          <Calendar className={`w-5 h-5 ${color.text}`} />
+          <CalendarIconSvg className={`w-5 h-5 ${color.text}`} />
         </div>
         <div>
           <h3 className="text-white font-semibold">年末优化方案</h3>
@@ -544,7 +548,7 @@ function SplitResult({ result, color }: {
       {/* Calculation Steps */}
       <div className="bg-white/5 rounded-2xl border border-white/10 p-6">
         <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Info className="w-4 h-4 text-white/50" />
+          <CheckCircle2 className="w-4 h-4 text-white/50" />
           计算过程
         </h4>
         <div className="space-y-3">
@@ -587,14 +591,24 @@ function YearEndResult({ result, color }: {
             <p className="text-white font-semibold">¥{formatMoney(result.scenario.first11MonthsSalary)}</p>
           </div>
           <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-white/50 text-xs mb-1">12月工资</p>
-            <p className="text-white font-semibold">¥{formatMoney(result.scenario.decemberSalary)}</p>
+            <p className="text-white/50 text-xs mb-1">12月工资(优化后)</p>
+            <p className="text-white font-semibold">¥{formatMoney(result.scenario.decemberSalary + result.optimal.mergedBonus)}</p>
           </div>
           <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-white/50 text-xs mb-1">年终奖</p>
-            <p className="text-white font-semibold">¥{formatMoney(result.scenario.yearEndBonus)}</p>
+            <p className="text-white/50 text-xs mb-1">年终奖(优化后)</p>
+            <p className="text-white font-semibold">¥{formatMoney(result.optimal.separateBonus)}</p>
           </div>
         </div>
+
+        {/* 最优分配说明 */}
+        {result.optimal.type === 'partial' && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-4">
+            <p className="text-blue-400 text-sm">
+              最优分配：年终奖中 <span className="font-semibold">¥{formatMoney(result.optimal.separateBonus)}</span> 单独计税，
+              <span className="font-semibold">¥{formatMoney(result.optimal.mergedBonus)}</span> 并入12月工资
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3 pt-4 border-t border-white/10">
           <div className="flex justify-between">

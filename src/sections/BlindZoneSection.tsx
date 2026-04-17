@@ -1,4 +1,4 @@
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { taxBlindZones, formatMoney } from '@/lib/taxCalculator';
 
 export function BlindZoneSection() {

@@ -2,7 +2,20 @@
   "permissions": {
     "allow": [
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\n清理项目：删除无用文件并优化算法\n\n- 删除 .claude 临时配置文件夹\n- 更新 .gitignore 排除临时文件和项目文档\n- 优化税额比较逻辑：税额相同时优先选择简单方案\n- 添加浮点数容差比较（EPSILON = 0.01）\n- 添加计算过程详情弹窗功能\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\n清理项目：删除无用文件并优化算法\n\n- 删除 .claude 临时配置文件夹\n- 更新 .gitignore 排除临时文件和项目文档\n- 优化税额比较逻辑：税额相同时优先选择简单方案\n- 添加浮点数容差比较（EPSILON = 0.01）\n- 添加计算过程详情弹窗功能\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "WebFetch(domain:mp.weixin.qq.com)",
+      "Bash(npx:*)",
+      "mcp__MiniMax__web_search",
+      "Bash(winget list:*)",
+      "Bash(choco:*)",
+      "Bash(curl:*)",
+      "Bash(URL_CHROME_PATH=\"/c/Program Files/Google/Chrome/Application/chrome.exe\" npx:*)",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(netstat:*)",
+      "Bash(git:*)",
+      "mcp__MiniMax__understand_image"
     ]
   }
 }
