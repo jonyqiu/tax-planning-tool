@@ -123,8 +123,9 @@ export function calculateSeparateTax(
 
   // 总税额
   const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
-  // 税后收入 = 总收入 - 三险一金 - 专项附加扣除 - 应纳税额
-  const afterTaxIncome = salary + bonus - insurance - deduction - totalTax;
+  // 税后收入 = 税前收入 - 三险一金个人缴纳部分 - 个人所得税
+  // 注：专项附加扣除已用于计算应纳税所得额，不再从税后收入中扣除
+  const afterTaxIncome = salary + bonus - insurance - totalTax;
 
   // 计算步骤
   const salarySteps: CalculationStep[] = [
@@ -205,7 +206,7 @@ export function calculateCombinedTax(
     tax: taxResult.tax,
     rate: taxResult.rate,
     totalTax: taxResult.tax,
-    afterTaxIncome: totalIncome - insurance - deduction - taxResult.tax,
+    afterTaxIncome: totalIncome - insurance - taxResult.tax,
     calculation: {
       steps,
     },
@@ -269,7 +270,7 @@ export function generateChartData(
       separateBonus,
       combinedSalary: separateSalary,
       totalTax,
-      afterTaxIncome: totalIncome - insurance - deduction - totalTax,
+      afterTaxIncome: totalIncome - insurance - totalTax,
     });
   }
 
@@ -360,22 +361,15 @@ export function calculateYearEndOptimal(scenario: YearEndScenario) {
   const plan3 = findOptimalPartialPlan(annualSalary, yearEndBonus, insurance, deduction);
 
   // 找出最优方案
-  // 优先选择税额低的，税额相同时选择更简单的方案（优先单独计税 > 并入综合所得 > 部分拆分）
-  const getComplexityScore = (plan: YearEndPlan): number => {
-    if (plan.type === 'separate') return 0; // 全部单独计税，最简单
-    if (plan.type === 'combined') return 1; // 全部并入综合所得
-    return 2; // 部分拆分，最复杂
-  };
-
-  // 使用容差比较浮点数，避免精度问题
+  // 优先选择税额低的，税额相同时选择年终奖更高的方案
   const EPSILON = 0.01;
 
   const plans = [plan1, plan2, plan3].filter((p): p is YearEndPlan => p !== null);
   const optimalPlan = plans.reduce((best, current) => {
     // 当前方案税额明显更低，选择当前方案
     if (current.totalTax < best.totalTax - EPSILON) return current;
-    // 税额在容差范围内相同，选择更简单的方案
-    if (Math.abs(current.totalTax - best.totalTax) <= EPSILON && getComplexityScore(current) < getComplexityScore(best)) return current;
+    // 税额在容差范围内相同，优先选择年终奖更高的方案
+    if (Math.abs(current.totalTax - best.totalTax) <= EPSILON && current.separateBonus > best.separateBonus) return current;
     return best;
   });
 
@@ -451,7 +445,7 @@ function calculateYearEndPlan1(
     separateBonusTax: bonusTaxResult.tax,
     salaryTax: salaryTaxResult.tax,
     totalTax,
-    afterTaxIncome: annualSalary + yearEndBonus - insurance - deduction - totalTax,
+    afterTaxIncome: annualSalary + yearEndBonus - insurance - totalTax,
     salaryTaxableIncome,
     salaryRate: salaryTaxResult.rate,
     bonusRate: bonusTaxResult.rate,
@@ -499,7 +493,7 @@ function calculateYearEndPlan2(
     separateBonusTax: 0,
     salaryTax: taxResult.tax,
     totalTax: taxResult.tax,
-    afterTaxIncome: totalIncome - insurance - deduction - taxResult.tax,
+    afterTaxIncome: totalIncome - insurance - taxResult.tax,
     salaryTaxableIncome: taxableIncome,
     salaryRate: taxResult.rate,
     bonusRate: 0,
@@ -536,22 +530,8 @@ function findOptimalPartialPlan(
     const bonusTaxResult = calculateBonusTax(separateBonus);
     const totalTax = salaryTaxResult.tax + bonusTaxResult.tax;
 
-    // 计算当前方案的复杂度分数（越低越简单）
-    // 0% = 全部并入（复杂度1），100% = 全部单独（复杂度0），其他 = 部分拆分（复杂度2）
-    const getComplexityScore = (p: number): number => {
-      if (p === 100) return 0; // 全部单独计税，最简单
-      if (p === 0) return 1;   // 全部并入综合所得
-      return 2;                // 部分拆分，最复杂
-    };
-
-    const currentComplexity = getComplexityScore(percent);
-    const optimalComplexity = optimalPlan ? getComplexityScore(optimalPlan.separateBonus > 0 && optimalPlan.mergedBonus > 0 ? 50 : (optimalPlan.separateBonus > 0 ? 100 : 0)) : Infinity;
-
-    // 使用容差比较浮点数，避免精度问题
-    const EPSILON = 0.01;
-
-    // 优先选择税额低的，税额相同时选择更简单的方案
-    if (totalTax < minTax - EPSILON || (Math.abs(totalTax - minTax) <= EPSILON && currentComplexity < optimalComplexity)) {
+    // 税额相同时，优先选择年终奖更高的方案
+    if (totalTax < minTax - EPSILON || (Math.abs(totalTax - minTax) <= EPSILON && separateBonus > (optimalPlan?.separateBonus || 0))) {
       minTax = totalTax;
 
       // 生成描述
@@ -603,7 +583,7 @@ function findOptimalPartialPlan(
         separateBonusTax: bonusTaxResult.tax,
         salaryTax: salaryTaxResult.tax,
         totalTax,
-        afterTaxIncome: annualSalary + yearEndBonus - insurance - deduction - totalTax,
+        afterTaxIncome: annualSalary + yearEndBonus - insurance - totalTax,
         salaryTaxableIncome,
         salaryRate: salaryTaxResult.rate,
         bonusRate: bonusTaxResult.rate,
@@ -669,7 +649,9 @@ export function calculateOptimalSplit(
     const isSeparateBetter = separateResult.totalTax <= combinedResult.totalTax;
     const currentTax = isSeparateBetter ? separateResult.totalTax : combinedResult.totalTax;
 
-    if (currentTax < minTax) {
+    // 税额相同时，优先选择年终奖更高的方案
+    const EPSILON = 0.01;
+    if (currentTax < minTax - EPSILON || (Math.abs(currentTax - minTax) <= EPSILON && adjustedBonus > (optimalResult?.optimalBonus || 0))) {
       minTax = currentTax;
 
       // 生成计算步骤
@@ -705,7 +687,7 @@ export function calculateOptimalSplit(
         insurance,
         deduction,
         totalTax: currentTax,
-        afterTaxIncome: totalIncome - insurance - deduction - currentTax,
+        afterTaxIncome: totalIncome - insurance - currentTax,
         plan: isSeparateBetter ? 'separate' : 'combined',
         planName: isSeparateBetter ? '年终奖单独计税' : '年终奖并入综合所得',
         blindZoneAvoided: blindCheck.isInBlindZone,
@@ -721,7 +703,7 @@ export function calculateOptimalSplit(
     insurance,
     deduction,
     totalTax: 0,
-    afterTaxIncome: totalIncome - insurance - deduction,
+    afterTaxIncome: totalIncome - insurance,
     plan: 'combined',
     planName: '年终奖并入综合所得',
     blindZoneAvoided: false,
