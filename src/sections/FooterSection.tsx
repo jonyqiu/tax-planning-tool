@@ -37,7 +37,7 @@ export function FooterSection() {
 
         <div className="border-t border-white/5 pt-6 text-center">
           <p className="text-white/20 text-xs">
-            © 2024 个税筹划工具 · 计算结果仅供参考，具体以税务部门为准
+            © 2024 Individual Income Tax Planning · For reference only
           </p>
         </div>
       </div>
